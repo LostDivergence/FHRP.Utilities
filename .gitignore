@@ -1,9 +1,12 @@
-@"
+# Environment variables
 .env
 .env.*
-!.env.example
+*.env
+Keys.env
 
+# Dependencies
 node_modules/
+
+# Logs
 *.log
 logs/
-"@ | Set-Content -Path ".gitignore"
