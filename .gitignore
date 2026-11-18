@@ -2,7 +2,9 @@
 .env
 .env.*
 *.env
+keys.env
 Keys.env
+*.env
 
 # Dependencies
 node_modules/
