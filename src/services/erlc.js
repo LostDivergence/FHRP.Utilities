@@ -1,38 +1,36 @@
 const { performance } = require("node:perf_hooks");
 
-async function getServerInfo() {
-    const response = await fetch("https://api.erlc.gg/v2/server", {
-        method: "GET",
-        headers: {
-            "server-key": process.env.ERLC_API_KEY
-        }
-    });
+const SERVER_ENDPOINT = "https://api.erlc.gg/v2/server";
+const REQUEST_TIMEOUT = 10000;
 
-    if (!response.ok) {
-        throw new Error(`ERLC API Error: ${response.status}`);
+async function requestServerInfo() {
+    if (!process.env.ERLC_API_KEY) {
+        throw new Error("ERLC_API_KEY is missing.");
     }
 
-    return await response.json();
-}
-
-async function getApiPing() {
-    const start = performance.now();
-
-    const response = await fetch("https://api.erlc.gg/v2/server", {
+    const response = await fetch(SERVER_ENDPOINT, {
         method: "GET",
         headers: {
             "server-key": process.env.ERLC_API_KEY
         },
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT)
     });
 
-    const latency = Math.round(performance.now() - start);
-
     if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(`ER:LC API Error: HTTP ${response.status}`);
     }
 
-    return latency;
+    return response.json();
+}
+
+async function getServerInfo() {
+    return requestServerInfo();
+}
+
+async function getApiPing() {
+    const start = performance.now();
+    await requestServerInfo();
+    return Math.round(performance.now() - start);
 }
 
 module.exports = {

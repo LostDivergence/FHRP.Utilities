@@ -1,21 +1,26 @@
 {
-  "name": "fvrp.utilities",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "fhrp.utilities",
+  "version": "1.1.0",
+  "description": "Utility bot for Fairview Heights Roleplay.",
+  "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/index.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/salrange/FVRP.Utilities.git"
+    "url": "git+https://github.com/LostDivergence/FHRP.Utilities.git"
   },
-  "keywords": [],
+  "keywords": [
+    "fhrp",
+    "roblox",
+    "discord",
+    "utilities"
+  ],
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/salrange/FVRP.Utilities/issues"
+    "url": "https://github.com/LostDivergence/FHRP.Utilities/issues"
   },
-  "homepage": "https://github.com/salrange/FVRP.Utilities#readme",
+  "homepage": "https://github.com/LostDivergence/FHRP.Utilities#readme",
   "dependencies": {
     "discord.js": "^14.28.1",
     "dotenv": "^18.0.10"

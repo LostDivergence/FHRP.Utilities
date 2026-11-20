@@ -4,7 +4,6 @@
 *.env
 keys.env
 Keys.env
-*.env
 
 # Dependencies
 node_modules/
@@ -12,3 +11,6 @@ node_modules/
 # Logs
 *.log
 logs/
+
+# Local development
+.DS_Store
