@@ -1,34 +1,51 @@
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, SlashCommandBuilder } = require("discord.js");
 const { getServerInfo } = require("../services/erlc");
 
-async function execute(message) {
-    try {
-        const server = await getServerInfo();
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName("server")
+        .setDescription("View the current ER:LC server information."),
 
-        const embed = new EmbedBuilder()
-            .setTitle(server.Name)
-            .setColor(0x5865F2)
-            .addFields(
-                {
-                    name: "Players",
-                    value: `${server.CurrentPlayers}/${server.MaxPlayers}`,
-                    inline: true
-                },
-                {
-                    name: "Join Key",
-                    value: server.JoinKey || "Unknown",
-                    inline: true
-                }
-            )
-            .setFooter({ text: "FVRP Utilities" })
-            .setTimestamp();
+    async execute({ message, interaction }) {
+        if (interaction) {
+            await interaction.deferReply();
+        }
 
-        await message.reply({ embeds: [embed] });
+        try {
+            const server = await getServerInfo();
 
-    } catch (error) {
-        console.error(error);
-        await message.reply("Failed to retrieve server information.");
+            const embed = new EmbedBuilder()
+                .setTitle(server.Name || "ER:LC Server")
+                .setColor(0x5865F2)
+                .addFields(
+                    {
+                        name: "Players",
+                        value: `${server.CurrentPlayers ?? "?"}/${server.MaxPlayers ?? "?"}`,
+                        inline: true
+                    },
+                    {
+                        name: "Join Key",
+                        value: server.JoinKey || "Unknown",
+                        inline: true
+                    }
+                )
+                .setFooter({ text: "FHRP Utilities" })
+                .setTimestamp();
+
+            if (interaction) {
+                await interaction.editReply({ embeds: [embed] });
+            } else {
+                await message.reply({ embeds: [embed] });
+            }
+        } catch (error) {
+            console.error("ER:LC server command failed:", error);
+
+            const payload = { content: "Failed to retrieve server information." };
+            if (interaction) {
+                await interaction.editReply(payload);
+            } else {
+                await message.reply(payload);
+            }
+        }
     }
-}
-
-module.exports = { execute };
+};
