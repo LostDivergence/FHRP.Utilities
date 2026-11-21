@@ -257,7 +257,7 @@ const infraction = {
       .addStringOption(o => o.setName("id").setDescription("Infraction ID").setRequired(true))
       .addStringOption(o => o.setName("reason").setDescription("Revocation reason").setRequired(true))),
   async execute({ message, interaction, args }) {
-    const guild = interaction ? interaction.guild : message.guild, actor = interaction ? interaction.member : message.member;
+    const guild = interaction ? interaction.guild : message.guild, actor = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     const cfg = getConfig()[guild.id] || {};
     if (interaction) {
       const sub = interaction.options.getSubcommand();
@@ -322,7 +322,7 @@ const infractionRevoke = {
     .addStringOption(o => o.setName("id").setDescription("Infraction ID").setRequired(true))
     .addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(true)),
   async execute({ message, interaction, args }) {
-    const guild = interaction ? interaction.guild : message.guild, actor = interaction ? interaction.member : message.member;
+    const guild = interaction ? interaction.guild : message.guild, actor = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     const cfg = getConfig()[guild.id] || {};
     if (!canManage(actor, cfg)) return reply({ message, interaction }, { content: "You need the configured HR/Admin role.", ephemeral: true });
     const id = interaction ? interaction.options.getString("id") : args[0];
