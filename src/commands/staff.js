@@ -322,6 +322,42 @@ const infractionRevoke = {
   }
 };
 
+const appealReview = {
+  data: new SlashCommandBuilder().setName("appealreview").setDescription("Approve or deny an infraction appeal.")
+    .addStringOption(o => o.setName("id").setDescription("Appeal ID").setRequired(true))
+    .addStringOption(o => o.setName("decision").setDescription("Decision").setRequired(true)
+      .addChoices({ name: "Accept", value: "Accepted" }, { name: "Deny", value: "Denied" }))
+    .addStringOption(o => o.setName("reason").setDescription("Decision reason").setRequired(true)),
+  async execute({ message, interaction, args }) {
+    const guild = interaction ? interaction.guild : message.guild;
+    const actor = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
+    const cfg = getConfig()[guild.id] || {};
+    if (!canStaff(actor, cfg)) return reply({ message, interaction }, { content: "You are not authorized to review appeals.", ephemeral: true });
+    const id = interaction ? interaction.options.getString("id") : args[0];
+    const decision = interaction ? interaction.options.getString("decision") : (args[1] || "").toLowerCase() === "accept" ? "Accepted" : "Denied";
+    const reason = interaction ? interaction.options.getString("reason") : args.slice(2).join(" ");
+    if (!id || !["Accepted", "Denied"].includes(decision) || !reason)
+      return reply({ message, interaction }, { content: "Usage: -appealreview <AppealID> <accept|deny> <reason>" });
+    const all = load("appeals.json", []);
+    const appeal = all.find(x => x.id === id && x.guildId === guild.id);
+    if (!appeal) return reply({ message, interaction }, { content: "Appeal not found.", ephemeral: true });
+    if (appeal.status !== "Pending") return reply({ message, interaction }, { content: "This appeal has already been reviewed.", ephemeral: true });
+    appeal.status = decision; appeal.reviewReason = reason; appeal.reviewedBy = interaction ? interaction.user.id : message.author.id;
+    appeal.reviewedAt = new Date().toISOString(); save("appeals.json", all);
+    if (decision === "Accepted") {
+      const records = getInfractions(), item = records.find(x => x.id === appeal.infractionId && x.guildId === guild.id);
+      if (item) { item.revoked = true; item.revokeReason = "Appeal accepted: " + reason; item.revokedBy = appeal.reviewedBy; item.revokedAt = appeal.reviewedAt; save("infractions.json", records); }
+    }
+    const ticket = getTickets().find(x => x.id === appeal.ticketId);
+    if (ticket) {
+      const channel = await guild.channels.fetch(ticket.channelId).catch(() => null);
+      if (channel) await channel.send({ embeds: [new EmbedBuilder().setTitle("Appeal " + decision).setColor(decision === "Accepted" ? 0x57F287 : 0xED4245)
+        .setDescription(reason).addFields({ name: "Reviewed by", value: "<@" + appeal.reviewedBy + ">" }).setTimestamp()] }).catch(() => null);
+    }
+    return reply({ message, interaction }, { content: "Appeal " + id + " marked **" + decision + "**." });
+  }
+};
+
 const ticketPanel = {
   data: new SlashCommandBuilder().setName("ticketpanel").setDescription("Post the Support ticket panel.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
@@ -437,6 +473,6 @@ async function handleComponents(interaction) {
 }
 
 module.exports = {
-  commands: [setup, promote, infraction, infractions, infractionInfo, infractionRevoke, ticketPanel],
+  commands: [setup, promote, infraction, infractions, infractionInfo, infractionRevoke, appealReview, ticketPanel],
   handleComponents
 };
