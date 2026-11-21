@@ -3,7 +3,7 @@ const path = require("node:path");
 const {
   ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ChannelType,
   EmbedBuilder, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder,
-  StringSelectMenuBuilder, TextInputBuilder, TextInputStyle
+  StringSelectMenuBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, TextInputBuilder, TextInputStyle
 } = require("discord.js");
 
 const DATA = path.resolve(__dirname, "../../data");
@@ -119,123 +119,72 @@ async function revoke(ctx, id, reason) {
   return ctx.respond({ content: "Infraction " + id + " has been revoked." });
 }
 
+function setupEmbed(guildId) {
+  const cfg = getConfig()[guildId] || { roles: {}, channels: {}, ranks: [] };
+  const roleLines = Object.entries(cfg.roles || {}).map(([k, v]) => "• **" + k + "**: <@&" + v + ">");
+  const channelLines = Object.entries(cfg.channels || {}).map(([k, v]) => "• **" + k + "**: <#" + v + ">");
+  const rankLines = (cfg.ranks || []).map((r, i) => (i + 1) + ". **" + r.name + "**: <@&" + r.roleId + ">");
+  return new EmbedBuilder().setTitle("FHRP Utilities | Setup").setColor(0x5865F2)
+    .setDescription("Use the buttons below to configure the bot. All settings are saved automatically.")
+    .addFields(
+      { name: "Roles", value: roleLines.join("\n") || "Not configured" },
+      { name: "Channels", value: channelLines.join("\n") || "Not configured" },
+      { name: "Ranks (low to high)", value: rankLines.join("\n") || "Not configured" }
+    ).setFooter({ text: "FHRP Utilities Configuration" });
+}
+function setupRows() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("fhrp:setup:role").setLabel("Set Role").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("fhrp:setup:channel").setLabel("Set Channel").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("fhrp:setup:rank").setLabel("Add / Update Rank").setStyle(ButtonStyle.Primary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("fhrp:setup:view").setLabel("Refresh Settings").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("fhrp:setup:reset").setLabel("Reset").setStyle(ButtonStyle.Danger)
+    )
+  ];
+}
 const setup = {
-  data: new SlashCommandBuilder().setName("setup").setDescription("Configure FHRP Utilities.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addSubcommand(s => s.setName("role").setDescription("Set a role.")
-      .addStringOption(o => o.setName("key").setDescription("Role setting").setRequired(true).addChoices(
-        { name: "Staff", value: "staff" }, { name: "HR", value: "hr" }, { name: "Administrator", value: "administrator" },
-        { name: "Blacklist", value: "blacklist" }, { name: "Support Staff", value: "supportStaff" }))
-      .addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true)))
-    .addSubcommand(s => s.setName("channel").setDescription("Set a channel/category.")
-      .addStringOption(o => o.setName("key").setDescription("Channel setting").setRequired(true).addChoices(
-        { name: "Infraction Logs", value: "infractions" }, { name: "Support Category", value: "supportCategory" },
-        { name: "Support Panel", value: "supportPanel" }, { name: "Ticket Logs", value: "ticketLogs" },
-        { name: "Audit Logs", value: "auditLogs" }))
-      .addChannelOption(o => o.setName("channel").setDescription("Channel/category").setRequired(true)))
-    .addSubcommand(s => s.setName("rank").setDescription("Add/update a rank (order added = low to high).")
-      .addStringOption(o => o.setName("name").setDescription("Rank name").setRequired(true))
-      .addRoleOption(o => o.setName("role").setDescription("Rank role").setRequired(true)))
-    .addSubcommand(s => s.setName("view").setDescription("View configuration."))
-    .addSubcommand(s => s.setName("reset").setDescription("Reset configuration.")),
-  async execute({ message, interaction, args }) {
+  data: new SlashCommandBuilder().setName("setup").setDescription("Open the FHRP Utilities setup menu.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  async execute({ message, interaction }) {
     const guild = interaction ? interaction.guild : message.guild;
-    const member = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     if (!guild) return reply({ message, interaction }, { content: "Use this command in a server." });
+    const member = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     if (!isAdmin(member)) return reply({ message, interaction }, { content: "Only server administrators can configure the bot.", ephemeral: true });
-    const cfg = getConfig()[guild.id] || { roles: {}, channels: {}, ranks: [] };
-    if (interaction) {
-      const sub = interaction.options.getSubcommand();
-      if (sub === "role") {
-        const key = interaction.options.getString("key"), role = interaction.options.getRole("role");
-        updateConfig(guild.id, { roles: Object.assign({}, cfg.roles, { [key]: role.id }) });
-        return interaction.reply({ content: "Saved " + key + " role: " + role, ephemeral: true });
-      }
-      if (sub === "channel") {
-        const key = interaction.options.getString("key"), channel = interaction.options.getChannel("channel");
-        if (key === "supportCategory" && channel.type !== ChannelType.GuildCategory)
-          return interaction.reply({ content: "Support Category must be a category channel.", ephemeral: true });
-        if (key !== "supportCategory" && !channel.isTextBased())
-          return interaction.reply({ content: "Select a text channel.", ephemeral: true });
-        updateConfig(guild.id, { channels: Object.assign({}, cfg.channels, { [key]: channel.id }) });
-        return interaction.reply({ content: "Saved " + key + ": " + channel, ephemeral: true });
-      }
-      if (sub === "rank") {
-        const name = interaction.options.getString("name").trim(), role = interaction.options.getRole("role");
-        const list = [...(cfg.ranks || [])], index = list.findIndex(r => r.name.toLowerCase() === name.toLowerCase());
-        const entry = { name, roleId: role.id };
-        if (index >= 0) list[index] = entry; else list.push(entry);
-        updateConfig(guild.id, { ranks: list });
-        return interaction.reply({ content: "Saved rank " + name + ". Rank order follows the order added.", ephemeral: true });
-      }
-      if (sub === "reset") {
-        const all = getConfig(); delete all[guild.id]; save("config.json", all);
-        return interaction.reply({ content: "Server configuration reset.", ephemeral: true });
-      }
-      const roleLines = Object.entries(cfg.roles || {}).map(([k,v]) => "• " + k + ": <@&" + v + ">");
-      const channelLines = Object.entries(cfg.channels || {}).map(([k,v]) => "• " + k + ": <#" + v + ">");
-      const rankLines = (cfg.ranks || []).map((r,i) => (i + 1) + ". " + r.name + ": <@&" + r.roleId + ">");
-      const embed = new EmbedBuilder().setTitle("FHRP Utilities Setup").setColor(0x5865F2)
-        .addFields({ name: "Roles", value: roleLines.join("\n") || "Not configured" },
-          { name: "Channels", value: channelLines.join("\n") || "Not configured" },
-          { name: "Ranks (low to high)", value: rankLines.join("\n") || "Not configured" });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-    const sub = args[0], key = args[1], value = args[2];
-    if (sub === "reset") { const all = getConfig(); delete all[guild.id]; save("config.json", all); return message.reply("Server configuration reset."); }
-    if (sub === "view") {
-      const roleLines = Object.entries(cfg.roles || {}).map(([k,v]) => "• " + k + ": <@&" + v + ">");
-      const channelLines = Object.entries(cfg.channels || {}).map(([k,v]) => "• " + k + ": <#" + v + ">");
-      const rankLines = (cfg.ranks || []).map((r,i) => (i + 1) + ". " + r.name + ": <@&" + r.roleId + ">");
-      const embed = new EmbedBuilder().setTitle("FHRP Utilities Setup").setColor(0x5865F2)
-        .addFields({ name: "Roles", value: roleLines.join("\n") || "Not configured" },
-          { name: "Channels", value: channelLines.join("\n") || "Not configured" },
-          { name: "Ranks (low to high)", value: rankLines.join("\n") || "Not configured" });
-      return message.reply({ embeds: [embed] });
-    }
-    if (sub === "role" && key && value) {
-      const role = await fetchRole(guild, value);
-      if (!role) return message.reply("Usage: -setup role <staff|hr|administrator|blacklist|supportStaff> @role");
-      updateConfig(guild.id, { roles: Object.assign({}, cfg.roles, { [key]: role.id }) });
-      return message.reply("Saved " + key + " role: " + role.name);
-    }
-    if (sub === "channel" && key && value) {
-      const id = value.match(/^<#(\d+)>$/)?.[1] || value, channel = await guild.channels.fetch(id).catch(() => null);
-      if (!channel) return message.reply("Channel not found.");
-      updateConfig(guild.id, { channels: Object.assign({}, cfg.channels, { [key]: channel.id }) });
-      return message.reply("Saved " + key + " channel: " + channel.name);
-    }
-    if (sub === "rank" && key && value) {
-      const role = await fetchRole(guild, value);
-      if (!role) return message.reply("Usage: -setup rank <name> @role");
-      const list = [...(cfg.ranks || [])], index = list.findIndex(r => r.name.toLowerCase() === key.toLowerCase());
-      const entry = { name: key, roleId: role.id }; if (index >= 0) list[index] = entry; else list.push(entry);
-      updateConfig(guild.id, { ranks: list }); return message.reply("Saved rank " + key + ".");
-    }
-    return message.reply("Use -setup view | -setup role <key> @role | -setup channel <key> #channel | -setup rank <name> @role | -setup reset");
+    const payload = { embeds: [setupEmbed(guild.id)], components: setupRows() };
+    return reply({ message, interaction }, payload);
   }
 };
 
 const promote = {
   data: new SlashCommandBuilder().setName("promote").setDescription("Assign a staff rank.")
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
-    .addRoleOption(o => o.setName("rank").setDescription("Configured rank role").setRequired(true)),
+    .addRoleOption(o => o.setName("rank").setDescription("Configured rank role").setRequired(true))
+    .addStringOption(o => o.setName("reason").setDescription("Reason for the promotion").setRequired(true).setMaxLength(500)),
   async execute({ message, interaction, args }) {
     const guild = interaction ? interaction.guild : message.guild, actor = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     const cfg = getConfig()[guild.id] || {};
     if (!canManage(actor, cfg)) return reply({ message, interaction }, { content: "You need the configured HR/Admin role.", ephemeral: true });
     const target = interaction ? await guild.members.fetch(interaction.options.getUser("user").id) : await fetchUserMember(guild, args[0]);
     const role = interaction ? interaction.options.getRole("rank") : await fetchRole(guild, args[1]);
-    if (!target || !role) return reply({ message, interaction }, { content: "Usage: -promote @user @rank" });
+    const reason = interaction ? interaction.options.getString("reason").trim() : args.slice(2).join(" ").trim();
+    if (!target || !role || !reason)
+      return reply({ message, interaction }, { content: "Usage: -promote @user @rank <reason>" });
     if (!(cfg.ranks || []).some(r => r.roleId === role.id))
-      return reply({ message, interaction }, { content: "That role is not configured. Add it with /setup rank first.", ephemeral: true });
+      return reply({ message, interaction }, { content: "That role is not configured. Add it with /setup first.", ephemeral: true });
     if (role.position >= guild.members.me.roles.highest.position)
       return reply({ message, interaction }, { content: "Move the bot's highest role above the selected rank.", ephemeral: true });
     const rankIds = (cfg.ranks || []).map(r => r.roleId).filter(id => target.roles.cache.has(id));
     if (rankIds.length) await target.roles.remove(rankIds);
     await target.roles.add(role);
     const embed = new EmbedBuilder().setTitle("Staff Promotion").setColor(0x57F287)
-      .setDescription(target.toString() + " has been assigned **" + role.name + "**.").setTimestamp();
+      .setDescription(target.toString() + " has been assigned **" + role.name + "**.")
+      .addFields(
+        { name: "Reason", value: reason },
+        { name: "Promoted By", value: interaction ? interaction.user.toString() : message.author.toString(), inline: true }
+      ).setTimestamp();
     await sendChannel(guild, cfg.channels && cfg.channels.auditLogs, { embeds: [embed] });
     return reply({ message, interaction }, { embeds: [embed] });
   }
@@ -390,6 +339,98 @@ const ticketPanel = {
 };
 
 async function handleComponents(interaction) {
+  if (interaction.customId && interaction.customId.startsWith("fhrp:setup:")) {
+    const guild = interaction.guild;
+    const actor = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
+    if (!isAdmin(actor)) return interaction.reply({ content: "Only server administrators can configure the bot.", ephemeral: true });
+
+    if (interaction.isButton()) {
+      const action = interaction.customId.split(":")[2];
+      if (action === "role") {
+        const menu = new StringSelectMenuBuilder().setCustomId("fhrp:setup:rolekey").setPlaceholder("Choose a role setting")
+          .addOptions(
+            { label: "Staff", value: "staff" }, { label: "HR", value: "hr" },
+            { label: "Administrator", value: "administrator" }, { label: "Blacklist", value: "blacklist" },
+            { label: "Support Staff", value: "supportStaff" }
+          );
+        return interaction.reply({ content: "Select which role setting to configure.", components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+      }
+      if (action === "channel") {
+        const menu = new StringSelectMenuBuilder().setCustomId("fhrp:setup:channelkey").setPlaceholder("Choose a channel setting")
+          .addOptions(
+            { label: "Infraction Logs", value: "infractions" }, { label: "Support Category", value: "supportCategory" },
+            { label: "Support Panel", value: "supportPanel" }, { label: "Ticket Logs", value: "ticketLogs" },
+            { label: "Audit Logs", value: "auditLogs" }
+          );
+        return interaction.reply({ content: "Select which channel setting to configure.", components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+      }
+      if (action === "rank") {
+        const modal = new ModalBuilder().setCustomId("fhrp:setup:rankmodal").setTitle("Add / Update Rank");
+        const name = new TextInputBuilder().setCustomId("rankName").setLabel("Rank name").setStyle(TextInputStyle.Short).setMaxLength(50).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(name));
+        return interaction.showModal(modal);
+      }
+      if (action === "view") {
+        return interaction.reply({ embeds: [setupEmbed(guild.id)], ephemeral: true });
+      }
+      if (action === "reset") {
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("fhrp:setup:resetconfirm").setLabel("Confirm Reset").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId("fhrp:setup:cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary)
+        );
+        return interaction.reply({ content: "Are you sure you want to reset this server's configuration?", components: [row], ephemeral: true });
+      }
+      if (action === "resetconfirm") {
+        const all = getConfig(); delete all[guild.id]; save("config.json", all);
+        return interaction.update({ content: "Server configuration reset.", components: [], embeds: [] });
+      }
+      if (action === "cancel") return interaction.update({ content: "Reset cancelled.", components: [] });
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      const key = interaction.values[0];
+      if (interaction.customId === "fhrp:setup:rolekey") {
+        const picker = new RoleSelectMenuBuilder().setCustomId("fhrp:setup:rolepick:" + key).setPlaceholder("Select a Discord role").setMinValues(1).setMaxValues(1);
+        return interaction.update({ content: "Select the role to assign.", components: [new ActionRowBuilder().addComponents(picker)] });
+      }
+      if (interaction.customId === "fhrp:setup:channelkey") {
+        const picker = new ChannelSelectMenuBuilder().setCustomId("fhrp:setup:channelpick:" + key).setPlaceholder("Select a channel");
+        if (key === "supportCategory") picker.setChannelTypes(ChannelType.GuildCategory);
+        else picker.setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement);
+        return interaction.update({ content: "Select the channel to assign.", components: [new ActionRowBuilder().addComponents(picker)] });
+      }
+    }
+
+    if (interaction.isRoleSelectMenu() && interaction.customId.startsWith("fhrp:setup:rolepick:")) {
+      const key = interaction.customId.split(":")[3], roleId = interaction.values[0];
+      const cfg = getConfig()[guild.id] || { roles: {}, channels: {}, ranks: [] };
+      updateConfig(guild.id, { roles: Object.assign({}, cfg.roles, { [key]: roleId }) });
+      return interaction.update({ content: "Saved **" + key + "** role: <@&" + roleId + ">.", components: [] });
+    }
+
+    if (interaction.isChannelSelectMenu() && interaction.customId.startsWith("fhrp:setup:channelpick:")) {
+      const key = interaction.customId.split(":")[3], channelId = interaction.values[0];
+      const cfg = getConfig()[guild.id] || { roles: {}, channels: {}, ranks: [] };
+      updateConfig(guild.id, { channels: Object.assign({}, cfg.channels, { [key]: channelId }) });
+      return interaction.update({ content: "Saved **" + key + "**: <#" + channelId + ">.", components: [] });
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === "fhrp:setup:rankmodal") {
+      const name = interaction.fields.getTextInputValue("rankName").trim();
+      const picker = new RoleSelectMenuBuilder().setCustomId("fhrp:setup:rankpick:" + encodeURIComponent(name)).setPlaceholder("Select the Discord role for this rank");
+      return interaction.reply({ content: "Select the Discord role for **" + name + "**.", components: [new ActionRowBuilder().addComponents(picker)], ephemeral: true });
+    }
+
+    if (interaction.isRoleSelectMenu() && interaction.customId.startsWith("fhrp:setup:rankpick:")) {
+      const name = decodeURIComponent(interaction.customId.slice("fhrp:setup:rankpick:".length));
+      const roleId = interaction.values[0], cfg = getConfig()[guild.id] || { roles: {}, channels: {}, ranks: [] };
+      const ranks = [...(cfg.ranks || [])], index = ranks.findIndex(r => r.name.toLowerCase() === name.toLowerCase());
+      const entry = { name, roleId };
+      if (index >= 0) ranks[index] = entry; else ranks.push(entry);
+      updateConfig(guild.id, { ranks });
+      return interaction.update({ content: "Saved rank **" + name + "**: <@&" + roleId + ">.", components: [] });
+    }
+  }
   if (interaction.isStringSelectMenu() && interaction.customId === "fhrp:ticket-type") {
     const index = Number(interaction.values[0]), type = TICKET_TYPES[index];
     const modal = new ModalBuilder().setCustomId("fhrp:ticket-modal:" + index).setTitle(type + " Ticket");
