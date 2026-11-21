@@ -6,10 +6,12 @@ dotenv.config({ path: path.resolve(__dirname, "../keys.env") });
 dotenv.config();
 
 const staffSystem = require("./commands/staff");
+const afkSystem = require("./commands/afk");
 const commands = [
     require("./commands/ping"),
     require("./commands/server"),
     require("./commands/version"),
+    afkSystem.command,
     ...staffSystem.commands
 ];
 const commandMap = new Map(commands.map(command => [command.data.name, command]));
@@ -39,7 +41,10 @@ client.once("clientReady", async () => {
 });
 
 client.on("messageCreate", async message => {
-    if (message.author.bot || !message.guild || !message.content.startsWith(PREFIX)) return;
+    if (message.author.bot || !message.guild) return;
+    try { await afkSystem.handleMessage(message); }
+    catch (error) { console.error("AFK handler error:", error); }
+    if (!message.content.startsWith(PREFIX)) return;
     const parts = message.content.slice(PREFIX.length).trim().split(/\s+/);
     const name = parts.shift()?.toLowerCase();
     if (!name) return;
