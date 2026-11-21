@@ -60,7 +60,7 @@ async function sendChannel(guild, id, payload) {
 function infractionEmbed(item) {
   return new EmbedBuilder().setColor(item.revoked ? 0x747F8D : 0xED4245)
     .setTitle("Infraction " + item.id)
-    .setDescription("Unfortunately, <@" + item.userId + ">, you've been **" + item.type + "**.")
+    .setDescription("Unfortunately, <@" + item.userId + ">, you have received a **" + item.type + "**.")
     .addFields(
       { name: "Reason", value: item.reason },
       { name: "Appeal Status", value: item.appealable ? "Appealable" : "Un-Appealable", inline: true },
