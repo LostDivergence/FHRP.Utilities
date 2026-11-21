@@ -59,7 +59,7 @@ client.on("interactionCreate", async interaction => {
             if (command) await command.execute({ client, interaction, args: [] });
             return;
         }
-        if (interaction.isStringSelectMenu() || interaction.isButton() || interaction.isModalSubmit()) {
+        if (interaction.isStringSelectMenu() || interaction.isButton() || interaction.isModalSubmit() || interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu()) {
             await staffSystem.handleComponents(interaction);
         }
     } catch (error) {
