@@ -355,6 +355,14 @@ async function handleComponents(interaction) {
     const subject = interaction.fields.getTextInputValue("subject");
     const details = interaction.fields.getTextInputValue("details");
     const infractionId = interaction.fields.getTextInputValue("infractionId") || "Not provided";
+    let appealedInfraction = null;
+    if (type === "Infraction Appeal") {
+      appealedInfraction = getInfractions().find(x => x.id === infractionId && x.guildId === guild.id);
+      if (!appealedInfraction || appealedInfraction.userId !== interaction.user.id)
+        return interaction.reply({ content: "That Infraction ID was not found for your account.", ephemeral: true });
+      if (!appealedInfraction.appealable || appealedInfraction.revoked)
+        return interaction.reply({ content: "This infraction cannot be appealed.", ephemeral: true });
+    }
     const channel = await guild.channels.create({
       name: "ticket-" + interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 18),
       type: ChannelType.GuildText, parent: category,
@@ -368,6 +376,13 @@ async function handleComponents(interaction) {
     const all = getTickets(), ticket = { id: makeId(all, "TKT-"), guildId: guild.id, channelId: channel.id,
       userId: interaction.user.id, type, subject, details, infractionId, status: "Open", claimedBy: null, createdAt: new Date().toISOString() };
     all.push(ticket); save("tickets.json", all);
+    if (appealedInfraction) {
+      const appealRecords = load("appeals.json", []);
+      const appeal = { id: makeId(appealRecords, "APL-"), guildId: guild.id, infractionId: infractionId,
+        ticketId: ticket.id, userId: interaction.user.id, status: "Pending", createdAt: new Date().toISOString() };
+      appealRecords.push(appeal); save("appeals.json", appealRecords);
+      ticket.appealId = appeal.id; save("tickets.json", all);
+    }
     const buttons = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("fhrp:claim:" + ticket.id).setLabel("Claim").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("fhrp:close:" + ticket.id).setLabel("Close").setStyle(ButtonStyle.Danger)
