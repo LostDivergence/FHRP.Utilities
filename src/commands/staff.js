@@ -379,7 +379,13 @@ const ticketPanel = {
       .addOptions(TICKET_TYPES.map((x, i) => ({ label: x, value: String(i) })));
     const embed = new EmbedBuilder().setTitle("FHRP Support").setColor(0x5865F2)
       .setDescription("Select a category below to open a private ticket. Please provide clear details.");
-    return reply({ message, interaction }, { embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
+    const panelChannel = cfg.channels && cfg.channels.supportPanel
+      ? await guild.channels.fetch(cfg.channels.supportPanel).catch(() => null)
+      : (interaction ? interaction.channel : message.channel);
+    if (!panelChannel || !panelChannel.isTextBased())
+      return reply({ message, interaction }, { content: "Support Panel channel is not configured correctly.", ephemeral: true });
+    await panelChannel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] });
+    return reply({ message, interaction }, { content: "Support panel posted in " + panelChannel + ".", ephemeral: Boolean(interaction) });
   }
 };
 
