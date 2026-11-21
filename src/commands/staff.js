@@ -8,7 +8,7 @@ const {
 
 const DATA = path.resolve(__dirname, "../../data");
 const INFRACTION_TYPES = ["Warning", "Strike", "Final Warning", "Demotion", "Suspension", "Termination"];
-const TICKET_TYPES = ["General Support", "Staff Report", "Ban Appeal", "Infraction Appeal", "Other"];
+const TICKET_TYPES = ["General Support", "HR Inquiry", "Staff Report", "Ban Appeal", "Infraction Appeal", "Other"];
 
 function load(file, fallback) {
   fs.mkdirSync(DATA, { recursive: true });
@@ -40,7 +40,7 @@ function makeId(items, prefix) {
 function isAdmin(member) { return Boolean(member && member.permissions && member.permissions.has(PermissionFlagsBits.Administrator)); }
 function hasRole(member, id) { return Boolean(id && member && member.roles && member.roles.cache.has(id)); }
 function canManage(member, cfg) { return isAdmin(member) || hasRole(member, cfg.roles && cfg.roles.administrator) || hasRole(member, cfg.roles && cfg.roles.hr); }
-function canStaff(member, cfg) { return canManage(member, cfg) || hasRole(member, cfg.roles && cfg.roles.staff) || hasRole(member, cfg.roles && cfg.roles.supportStaff); }
+function canStaff(member, cfg) { return canManage(member, cfg) || hasRole(member, cfg.roles && cfg.roles.staff) || hasRole(member, cfg.roles && cfg.roles.supportStaff) || hasRole(member, cfg.roles && cfg.roles.ia); }
 function reply(ctx, payload) { return ctx.interaction ? ctx.interaction.reply(payload) : ctx.message.reply(payload); }
 async function fetchUserMember(guild, token) {
   const match = (token || "").match(/^<@!?(\d+)>$/);
@@ -351,7 +351,7 @@ async function handleComponents(interaction) {
           .addOptions(
             { label: "Staff", value: "staff" }, { label: "HR", value: "hr" },
             { label: "Administrator", value: "administrator" }, { label: "Blacklist", value: "blacklist" },
-            { label: "Support Staff", value: "supportStaff" }
+            { label: "Support Staff", value: "supportStaff" }, { label: "Internal Affairs (IA)", value: "ia" }
           );
         return interaction.reply({ content: "Select which role setting to configure.", components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
       }
@@ -443,7 +443,18 @@ async function handleComponents(interaction) {
   if (interaction.isModalSubmit() && interaction.customId.startsWith("fhrp:ticket-modal:")) {
     const type = TICKET_TYPES[Number(interaction.customId.split(":").pop())], guild = interaction.guild;
     const cfg = getConfig()[guild.id] || {}, category = cfg.channels && cfg.channels.supportCategory;
-    const staffRole = cfg.roles && (cfg.roles.supportStaff || cfg.roles.staff);
+    const roles = cfg.roles || {};
+    let handlerRoleIds = [];
+    if (type === "General Support") {
+      handlerRoleIds = [roles.staff, roles.supportStaff, roles.hr, roles.administrator, roles.ia].filter(Boolean);
+    } else if (type === "HR Inquiry") {
+      handlerRoleIds = [roles.hr, roles.administrator].filter(Boolean);
+    } else if (type === "Staff Report") {
+      handlerRoleIds = [roles.ia, roles.administrator].filter(Boolean);
+    } else {
+      handlerRoleIds = [roles.staff, roles.supportStaff, roles.hr, roles.administrator].filter(Boolean);
+    }
+    const uniqueHandlerRoleIds = [...new Set(handlerRoleIds)];
     if (!category) return interaction.reply({ content: "Support Category is not configured. Use /setup channel first.", ephemeral: true });
     const subject = interaction.fields.getTextInputValue("subject");
     const details = interaction.fields.getTextInputValue("details");
@@ -462,7 +473,10 @@ async function handleComponents(interaction) {
       permissionOverwrites: [
         { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
         { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
-        ...(staffRole ? [{ id: staffRole, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }] : []),
+        ...uniqueHandlerRoleIds.map(roleId => ({
+          id: roleId,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+        })),
         { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] }
       ]
     });
@@ -484,7 +498,13 @@ async function handleComponents(interaction) {
       .addFields({ name: "Opened by", value: interaction.user.toString(), inline: true },
         { name: "Subject", value: subject }, { name: "Details", value: details }, { name: "Infraction ID", value: infractionId })
       .setTimestamp();
-    await channel.send({ content: interaction.user.toString() + (staffRole ? " <@&" + staffRole + ">" : ""), embeds: [embed], components: [buttons] });
+    const roleMentions = uniqueHandlerRoleIds.map(roleId => "<@&" + roleId + ">").join(" ");
+    await channel.send({
+      content: [interaction.user.toString(), roleMentions].filter(Boolean).join(" "),
+      embeds: [embed],
+      components: [buttons],
+      allowedMentions: { users: [interaction.user.id], roles: uniqueHandlerRoleIds }
+    });
     return interaction.reply({ content: "Your ticket has been created: " + channel, ephemeral: true });
   }
   if (interaction.isButton() && interaction.customId.startsWith("fhrp:")) {
