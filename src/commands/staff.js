@@ -254,7 +254,7 @@ const infraction = {
       if (sub === "create") {
         if (!canStaff(actor, cfg)) return interaction.reply({ content: "You are not authorized to issue infractions.", ephemeral: true });
         const user = interaction.options.getUser("user"), target = await guild.members.fetch(user.id);
-        return createInfraction({ guild, issuer: user, respond: p => interaction.reply(p) }, target,
+        return createInfraction({ guild, issuer: interaction.user, respond: p => interaction.reply(p) }, target,
           interaction.options.getString("type"), interaction.options.getString("reason"), interaction.options.getBoolean("appealable"));
       }
       if (sub === "list") {
@@ -399,7 +399,24 @@ async function handleComponents(interaction) {
       await sendChannel(interaction.guild, cfg.channels && cfg.channels.ticketLogs, { content: "Transcript for " + ticket.id, files: [file] });
       await interaction.channel.permissionOverwrites.edit(ticket.userId, { SendMessages: false });
       await interaction.channel.setName("closed-" + ticket.id.toLowerCase()).catch(() => null);
+      const reopenRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("fhrp:reopen:" + ticket.id).setLabel("Reopen").setStyle(ButtonStyle.Success)
+      );
+      await interaction.message.edit({ components: [reopenRow] }).catch(() => null);
       return interaction.reply({ content: "Ticket closed. Transcript sent to the configured log channel." });
+    }
+    if (action === "reopen") {
+      if (!staff) return interaction.reply({ content: "Only staff can reopen tickets.", ephemeral: true });
+      if (ticket.status !== "Closed") return interaction.reply({ content: "This ticket is already open.", ephemeral: true });
+      ticket.status = "Open"; ticket.reopenedAt = new Date().toISOString(); save("tickets.json", all);
+      await interaction.channel.permissionOverwrites.edit(ticket.userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
+      await interaction.channel.setName("ticket-" + ticket.id.toLowerCase()).catch(() => null);
+      const openRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("fhrp:claim:" + ticket.id).setLabel("Claim").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("fhrp:close:" + ticket.id).setLabel("Close").setStyle(ButtonStyle.Danger)
+      );
+      await interaction.message.edit({ components: [openRow] }).catch(() => null);
+      return interaction.reply({ content: "Ticket reopened by " + interaction.user + "." });
     }
   }
 }
