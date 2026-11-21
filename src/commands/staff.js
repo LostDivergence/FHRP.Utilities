@@ -183,6 +183,16 @@ const setup = {
     }
     const sub = args[0], key = args[1], value = args[2];
     if (sub === "reset") { const all = getConfig(); delete all[guild.id]; save("config.json", all); return message.reply("Server configuration reset."); }
+    if (sub === "view") {
+      const roleLines = Object.entries(cfg.roles || {}).map(([k,v]) => "• " + k + ": <@&" + v + ">");
+      const channelLines = Object.entries(cfg.channels || {}).map(([k,v]) => "• " + k + ": <#" + v + ">");
+      const rankLines = (cfg.ranks || []).map((r,i) => (i + 1) + ". " + r.name + ": <@&" + r.roleId + ">");
+      const embed = new EmbedBuilder().setTitle("FHRP Utilities Setup").setColor(0x5865F2)
+        .addFields({ name: "Roles", value: roleLines.join("\n") || "Not configured" },
+          { name: "Channels", value: channelLines.join("\n") || "Not configured" },
+          { name: "Ranks (low to high)", value: rankLines.join("\n") || "Not configured" });
+      return message.reply({ embeds: [embed] });
+    }
     if (sub === "role" && key && value) {
       const role = await fetchRole(guild, value);
       if (!role) return message.reply("Usage: -setup role <staff|hr|administrator|blacklist|supportStaff> @role");
