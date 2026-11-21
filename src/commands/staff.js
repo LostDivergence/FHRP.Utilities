@@ -140,7 +140,7 @@ const setup = {
     .addSubcommand(s => s.setName("reset").setDescription("Reset configuration.")),
   async execute({ message, interaction, args }) {
     const guild = interaction ? interaction.guild : message.guild;
-    const member = interaction ? interaction.member : message.member;
+    const member = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     if (!guild) return reply({ message, interaction }, { content: "Use this command in a server." });
     if (!isAdmin(member)) return reply({ message, interaction }, { content: "Only server administrators can configure the bot.", ephemeral: true });
     const cfg = getConfig()[guild.id] || { roles: {}, channels: {}, ranks: [] };
@@ -211,7 +211,7 @@ const promote = {
     .addUserOption(o => o.setName("user").setDescription("Member").setRequired(true))
     .addRoleOption(o => o.setName("rank").setDescription("Configured rank role").setRequired(true)),
   async execute({ message, interaction, args }) {
-    const guild = interaction ? interaction.guild : message.guild, actor = interaction ? interaction.member : message.member;
+    const guild = interaction ? interaction.guild : message.guild, actor = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     const cfg = getConfig()[guild.id] || {};
     if (!canManage(actor, cfg)) return reply({ message, interaction }, { content: "You need the configured HR/Admin role.", ephemeral: true });
     const target = interaction ? await guild.members.fetch(interaction.options.getUser("user").id) : await fetchUserMember(guild, args[0]);
@@ -326,7 +326,7 @@ const ticketPanel = {
   data: new SlashCommandBuilder().setName("ticketpanel").setDescription("Post the Support ticket panel.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   async execute({ message, interaction }) {
-    const guild = interaction ? interaction.guild : message.guild, member = interaction ? interaction.member : message.member;
+    const guild = interaction ? interaction.guild : message.guild, member = interaction ? await guild.members.fetch(interaction.user.id) : message.member;
     const cfg = getConfig()[guild.id] || {};
     if (!canManage(member, cfg)) return reply({ message, interaction }, { content: "Only HR/Admin can post the ticket panel.", ephemeral: true });
     const menu = new StringSelectMenuBuilder().setCustomId("fhrp:ticket-type").setPlaceholder("Select a support category")
@@ -383,7 +383,7 @@ async function handleComponents(interaction) {
     const parts = interaction.customId.split(":"), action = parts[1], id = parts[2];
     const all = getTickets(), ticket = all.find(x => x.id === id && x.guildId === interaction.guildId);
     if (!ticket) return interaction.reply({ content: "Ticket record not found.", ephemeral: true });
-    const cfg = getConfig()[interaction.guildId] || {}, staff = canStaff(interaction.member, cfg);
+    const cfg = getConfig()[interaction.guildId] || {}, actor = await interaction.guild.members.fetch(interaction.user.id).catch(() => null), staff = canStaff(actor, cfg);
     if (action === "claim") {
       if (!staff) return interaction.reply({ content: "Only staff can claim tickets.", ephemeral: true });
       if (ticket.claimedBy) return interaction.reply({ content: "Already claimed by <@" + ticket.claimedBy + ">.", ephemeral: true });
